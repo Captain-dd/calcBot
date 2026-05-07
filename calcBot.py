@@ -6,7 +6,7 @@ import time
 import requests
 from flask import Flask, request, abort
 from datetime import datetime
-from config import TOKEN, WEBHOOK_URL, WEBHOOK_SECRET, TABLE_MIN, TABLE_MAX, SQUARE_MIN, SQUARE_MAX, CUBE_MIN, CUBE_MAX
+from config import TOKEN, WEBHOOK_URL, WEBHOOK_SECRET, TABLE_MIN, TABLE_MAX, SQUARE_MIN, SQUARE_MAX, CUBE_MIN, CUBE_MAX, TABLE, SQUARE, CUBE, SINGLE_DIGIT_ADDITION, SINGLE_DIGIT_SUBTRACTION, TWO_DIGIT_ADDITION, TWO_DIGIT_SUBTRACTION, THREE_DIGIT_ADDITION, THREE_DIGIT_SUBTRACTION, ADDITION_SUBTRACTION_MIX
 from logger import setup_logging, get_logger
 
 setup_logging()          # ← call ONCE at entry point
@@ -21,9 +21,16 @@ log.info("User state initialized (in-memory)")
 
 def build_type_keyboard(enabled):
     labels = {
-        "table":  "Tables",
-        "square": "Squares",
-        "cube":   "Cubes"
+        TABLE:  "Tables",
+        SQUARE: "Squares",
+        CUBE:   "Cubes",
+        SINGLE_DIGIT_ADDITION: "Single-Digit Addition",
+        SINGLE_DIGIT_SUBTRACTION: "Single-Digit Subtraction",
+        TWO_DIGIT_ADDITION: "Two-Digit Addition",
+        TWO_DIGIT_SUBTRACTION: "Two-Digit Subtraction",
+        THREE_DIGIT_ADDITION: "Three-Digit Addition",
+        THREE_DIGIT_SUBTRACTION: "Three-Digit Subtraction",
+        ADDITION_SUBTRACTION_MIX: "Addition/Subtraction Mix"
     }
     buttons = []
     for key, label in labels.items():
@@ -60,21 +67,70 @@ def keep_alive():
 def generate_question(enabled):
     qtype = random.choice(enabled)
 
-    if qtype == "square":
+    if qtype == SQUARE:
         num = random.randint(SQUARE_MIN, SQUARE_MAX)
         question = f"{num}² = ?"
         answer = num * num
 
-    elif qtype == "cube":
+    elif qtype == CUBE:
         num = random.randint(CUBE_MIN, CUBE_MAX)
         question = f"{num}³ = ?"
         answer = num * num * num
 
-    elif qtype == "table":
+    elif qtype == TABLE:
         num = random.randint(TABLE_MIN, TABLE_MAX)
         i = random.randint(2, 10)
         question = f"{num} x {i} = ?"
         answer = num * i
+    
+    elif qtype == SINGLE_DIGIT_ADDITION:
+        a = random.randint(0, 9)
+        b = random.randint(0, 9)
+        question = f"{a} + {b} = ?"
+        answer = a + b
+
+    elif qtype == SINGLE_DIGIT_SUBTRACTION:
+        a = random.randint(0, 9)
+        b = random.randint(0, a)  # ensure non-negative result
+        question = f"{a} - {b} = ?"
+        answer = a - b
+
+    elif qtype == TWO_DIGIT_ADDITION:
+        a = random.randint(10, 99)
+        b = random.randint(10, 99)
+        question = f"{a} + {b} = ?"
+        answer = a + b
+
+    elif qtype == TWO_DIGIT_SUBTRACTION:
+        a = random.randint(10, 99)
+        b = random.randint(10, a)  # ensure non-negative result
+        question = f"{a} - {b} = ?"
+        answer = a - b
+
+    elif qtype == THREE_DIGIT_ADDITION:
+        a = random.randint(100, 999)
+        b = random.randint(100, 999)
+        question = f"{a} + {b} = ?"
+        answer = a + b
+    
+    elif qtype == THREE_DIGIT_SUBTRACTION:
+        a = random.randint(100, 999)
+        b = random.randint(100, a)  # ensure non-negative result
+        question = f"{a} - {b} = ?"
+        answer = a - b
+
+    elif qtype == ADDITION_SUBTRACTION_MIX:
+        a = random.randint(0, 999)
+        b = random.randint(0, 999)
+        op = random.choice(["+", "-"])
+        if op == "+":
+            question = f"{a} + {b} = ?"
+            answer = a + b
+        else:
+            # ensure non-negative result for subtraction
+            a, b = max(a, b), min(a, b)
+            question = f"{a} - {b} = ?"
+            answer = a - b
 
     log.debug(f"Generated question → type={qtype} question='{question}' answer={answer}")
     return question, answer
@@ -111,6 +167,7 @@ def handle_callback(call):
         bot.answer_callback_query(call.id, "Please type /start first.")
         return
 
+    # if user is selecting types of question to practice
     if call.data.startswith("toggle_"):
         qtype = call.data.replace("toggle_", "")           # "table" / "square" / "cube"
         enabled = user_state[chat_id].get("enabled", [])
@@ -132,16 +189,18 @@ def handle_callback(call):
         bot.answer_callback_query(call.id)   # clears the loading spinner
         log.info(f"Toggle → chat_id={chat_id} type={qtype} enabled={enabled}")
 
+    # user clicked confirm after selecting types
     elif call.data == "confirm_types":
         enabled = user_state[chat_id].get("enabled", [])
 
+        # if user clicks confirm without selecting any type, show a toast message and do nothing
         if not enabled:
             # Toast — no new message, just a popup
             bot.answer_callback_query(call.id, "⚠️ Select at least one type!", show_alert=False)
             return
 
         bot.answer_callback_query(call.id)
-
+        
         # Update the keyboard message to show summary
         selected_labels = {"table": "Tables", "square": "Squares", "cube": "Cubes"}
         summary = ", ".join(selected_labels[t] for t in enabled)

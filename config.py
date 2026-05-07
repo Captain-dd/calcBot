@@ -24,3 +24,15 @@ SQUARE_MAX = int(os.getenv("SQUARE_MAX", 0))
 
 CUBE_MIN = int(os.getenv("CUBE_MIN", 0))
 CUBE_MAX = int(os.getenv("CUBE_MAX", 0))
+
+
+TABLE = "table"
+SQUARE = "square"
+CUBE = "cube"
+SINGLE_DIGIT_ADDITION = "single digit addition"
+SINGLE_DIGIT_SUBTRACTION = "single digit subtraction"
+TWO_DIGIT_ADDITION = "two digit addition"
+TWO_DIGIT_SUBTRACTION = "two digit subtraction"
+THREE_DIGIT_ADDITION = "three digit addition"
+THREE_DIGIT_SUBTRACTION = "three digit subtraction"
+ADDITION_SUBTRACTION_MIX = "addition subtraction mix"
