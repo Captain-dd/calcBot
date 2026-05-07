@@ -1,6 +1,7 @@
 import telebot
 import random
 import os
+from flask import Flask, request
 
 TOKEN = os.getenv("BOT_TOKEN")
 
@@ -92,6 +93,14 @@ def handle(message):
     bot.send_message(chat_id, f"Next:\n{question}")
 
 
-# ===== Run =====
-print("Running...")
-bot.infinity_polling()
+app = Flask(__name__)
+
+@app.route("/begin", methods=["POST"])
+def webhook():
+    try:
+        print("Running...")
+        bot.infinity_polling()
+    except Exception as e:
+        print("ERROR:", e)
+
+    return "ok", 200
