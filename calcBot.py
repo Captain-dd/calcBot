@@ -1,22 +1,60 @@
 import telebot
 import random
 import os
-from flask import Flask, request
+import threading
+import time
+import requests
+import logging
+from flask import Flask, request, abort
+from datetime import datetime
 
+# ===== Logging Setup =====
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+log = logging.getLogger(__name__)
+
+# ===== Env Variables =====
 TOKEN = os.getenv("BOT_TOKEN")
-print("TOKEN LOADED:", TOKEN is not None)
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
+
+log.info(f"BOT_TOKEN loaded: {TOKEN is not None}")
+log.info(f"WEBHOOK_URL loaded: {WEBHOOK_URL is not None} → {WEBHOOK_URL}")
+log.info(f"WEBHOOK_SECRET loaded: {WEBHOOK_SECRET is not None}")
+
+if not TOKEN or not WEBHOOK_URL or not WEBHOOK_SECRET:
+    log.critical("One or more required env variables are missing. Exiting.")
+    exit(1)
 
 bot = telebot.TeleBot(TOKEN, threaded=False)
+app = Flask(__name__)
 
-# ===== User State =====
+# ===== User State (in-memory) =====
 user_state = {}
-# {
-#   chat_id: {"num": 7, "type": "square"}
-# }
+log.info("User state initialized (in-memory)")
+
+
+# ===== Keep Alive =====
+def keep_alive():
+    log.info("Keep-alive thread running")
+    while True:
+        time.sleep(10 * 60)
+        try:
+            res = requests.get(f"{WEBHOOK_URL}/", timeout=10)
+            log.info(f"Keep-alive ping → HTTP {res.status_code}")
+        except requests.exceptions.ConnectionError:
+            log.warning("Keep-alive ping failed → Connection error")
+        except requests.exceptions.Timeout:
+            log.warning("Keep-alive ping failed → Timeout")
+        except Exception as e:
+            log.error(f"Keep-alive ping failed → Unexpected error: {e}")
+
 
 # ===== Generate Question =====
 def generate_question():
-    
     qtype = random.choice(["square", "cube", "table"])
 
     if qtype == "square":
@@ -29,86 +67,145 @@ def generate_question():
         question = f"{num}³ = ?"
         answer = num * num * num
 
-    else:  # table
+    else:
         num = random.randint(7, 30)
         i = random.randint(1, 10)
         question = f"{num} x {i} = ?"
         answer = num * i
 
-    return num, qtype, question, answer
+    log.debug(f"Generated question → type={qtype} question='{question}' answer={answer}")
+    return question, answer
 
 
-# ===== Start =====
+# ===== /start =====
 @bot.message_handler(commands=['start'])
 def start(message):
     chat_id = message.chat.id
+    username = message.from_user.username or "unknown"
+    log.info(f"/start → chat_id={chat_id} username=@{username}")
 
-    num, qtype, question, answer = generate_question()
+    question, answer = generate_question()
+    user_state[chat_id] = {"answer": answer}
 
-    user_state[chat_id] = {
-        "answer": answer
-    }
+    bot.send_message(chat_id, f"Welcome! Solve:\n\n{question}")
+    log.info(f"Question sent → chat_id={chat_id} question='{question}'")
 
-    bot.send_message(chat_id, f"Solve:\n{question}")
 
+# ===== /stop =====
 @bot.message_handler(commands=['stop'])
 def stop(message):
     chat_id = message.chat.id
+    username = message.from_user.username or "unknown"
+    log.info(f"/stop → chat_id={chat_id} username=@{username}")
 
     if chat_id in user_state:
-        del user_state[chat_id]
+        user_state.pop(chat_id)
+        log.info(f"User state cleared → chat_id={chat_id}")
+    else:
+        log.info(f"No active session to clear → chat_id={chat_id}")
 
-    bot.send_message(chat_id, "Stopped ✅")
+    bot.send_message(chat_id, "Stopped ✅ Type /start to play again.")
 
 
 # ===== Handle Answer =====
 @bot.message_handler(func=lambda message: True)
 def handle(message):
     chat_id = message.chat.id
+    username = message.from_user.username or "unknown"
     text = message.text.strip()
 
+    log.info(f"Message received → chat_id={chat_id} username=@{username} text='{text}'")
+
     if chat_id not in user_state:
-        bot.send_message(chat_id, "Type /start first")
+        log.warning(f"No active session → chat_id={chat_id} sent '{text}' without /start")
+        bot.send_message(chat_id, "Type /start first.")
         return
 
-    if not text.isdigit():
-        bot.send_message(chat_id, "Send a number")
+    if not text.lstrip('-').isdigit():
+        log.warning(f"Invalid input → chat_id={chat_id} sent non-numeric: '{text}'")
+        bot.send_message(chat_id, "Please send a valid number.")
         return
 
     user_answer = int(text)
     correct_answer = user_state[chat_id]["answer"]
 
-    # ===== Check =====
     if user_answer == correct_answer:
+        log.info(f"Correct answer → chat_id={chat_id} answered {user_answer} ✅")
         bot.send_message(chat_id, "Correct ✅")
     else:
-        bot.send_message(chat_id, f"Wrong ❌ Correct = {correct_answer}")
+        log.info(f"Wrong answer → chat_id={chat_id} answered {user_answer}, correct={correct_answer} ❌")
+        bot.send_message(chat_id, f"Wrong ❌  Correct answer = {correct_answer}")
 
-    # ===== Next Question =====
-    num, qtype, question, answer = generate_question()
+    question, answer = generate_question()
+    user_state[chat_id] = {"answer": answer}
+    bot.send_message(chat_id, f"Next:\n\n{question}")
+    log.info(f"Next question sent → chat_id={chat_id} question='{question}'")
 
-    user_state[chat_id] = {
-        "answer": answer
-    }
 
-    bot.send_message(chat_id, f"Next:\n{question}")
-
-app = Flask(__name__)
-
-@app.route("/begin")
+# ===== Webhook Route =====
+@app.route("/webhook", methods=["POST"])
 def webhook():
+    secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+
+    if secret != WEBHOOK_SECRET:
+        log.warning(f"Unauthorized webhook request → IP={request.remote_addr} secret_match=False")
+        abort(403)
+
+    if request.headers.get("content-type") != "application/json":
+        log.warning(f"Webhook bad content-type → {request.headers.get('content-type')}")
+        abort(403)
+
     try:
-        print("Running...")
-        bot.infinity_polling()
+        json_string = request.get_data().decode("utf-8")
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        log.debug(f"Webhook update processed → update_id={update.update_id}")
+        return "ok", 200
     except Exception as e:
-        print("ERROR:", e)
+        log.error(f"Failed to process webhook update → {e}", exc_info=True)
+        return "error", 500
 
-    return "ok", 200
 
+# ===== Set Webhook =====
+@app.route("/set_webhook")
+def set_webhook():
+    log.info("Set webhook requested")
+    try:
+        bot.remove_webhook()
+        log.info("Old webhook removed")
+
+        result = bot.set_webhook(
+            url=f"{WEBHOOK_URL}/webhook",
+            secret_token=WEBHOOK_SECRET
+        )
+
+        if result:
+            log.info(f"Webhook set successfully → {WEBHOOK_URL}/webhook")
+            return "Webhook set successfully ✅", 200
+        else:
+            log.error("Webhook setup returned False")
+            return "Webhook setup failed ❌", 500
+
+    except Exception as e:
+        log.error(f"Webhook setup crashed → {e}", exc_info=True)
+        return f"Webhook setup crashed: {e}", 500
+
+
+# ===== Health Check =====
 @app.route("/")
 def home():
-    return "Bot is running"
+    active_users = len(user_state)
+    log.debug(f"Health check hit → active_sessions={active_users}")
+    return f"Bot is running | Active sessions: {active_users}", 200
 
+
+# ===== Startup =====
 if __name__ == "__main__":
+    log.info("Starting keep-alive thread...")
+    thread = threading.Thread(target=keep_alive, daemon=True)
+    thread.start()
+    log.info("Keep-alive thread started ✅")
+
     port = int(os.environ.get("PORT", 5007))
+    log.info(f"Starting Flask server on port {port}")
     app.run(host="0.0.0.0", port=port)
