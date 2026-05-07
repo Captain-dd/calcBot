@@ -98,6 +98,7 @@ app = Flask(__name__)
 def webhook():
     try:
         data = request.stream.read().decode("utf-8")
+        print("Received data:", data)
         update = telebot.types.Update.de_json(data)
         bot.process_new_updates([update])
     except Exception as e:
