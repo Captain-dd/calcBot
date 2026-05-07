@@ -4,48 +4,13 @@ import os
 import threading
 import time
 import requests
-import logging
 from flask import Flask, request, abort
 from datetime import datetime
+from config import TOKEN, WEBHOOK_URL, WEBHOOK_SECRET, TABLE_MIN, TABLE_MAX, SQUARE_MIN, SQUARE_MAX, CUBE_MIN, CUBE_MAX
+from logger import setup_logging, get_logger
 
-import sys
-
-os.environ['PYTHONUNBUFFERED'] = '1'
-
-# ===== Logging Setup =====
-handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.DEBUG)
-handler.setFormatter(logging.Formatter(
-    "%(asctime)s | %(levelname)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-))
-
-# Force immediate flush
-class FlushHandler(logging.StreamHandler):
-    def emit(self, record):
-        super().emit(record)
-        self.flush()
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[FlushHandler(sys.stdout)]
-)
-log = logging.getLogger(__name__)
-
-# ===== Env Variables =====
-TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
-
-log.info(f"BOT_TOKEN loaded: {TOKEN is not None}")
-log.info(f"WEBHOOK_URL loaded: {WEBHOOK_URL is not None} → {WEBHOOK_URL}")
-log.info(f"WEBHOOK_SECRET loaded: {WEBHOOK_SECRET is not None}")
-
-if not TOKEN or not WEBHOOK_URL or not WEBHOOK_SECRET:
-    log.critical("One or more required env variables are missing. Exiting.")
-    exit(1)
+setup_logging()          # ← call ONCE at entry point
+log = get_logger(__name__)
 
 bot = telebot.TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
@@ -73,21 +38,34 @@ def keep_alive():
 
 # ===== Generate Question =====
 def generate_question():
-    qtype = random.choice(["square", "cube", "table"])
+    qtypeLst = []
+
+    if TABLE_MIN==0 and TABLE_MAX==0 and SQUARE_MIN==0 and SQUARE_MAX==0 and CUBE_MIN==0 and CUBE_MAX==0:
+        log.critical("All question ranges are set to 0. Please configure the ranges.")
+        return "No questions available. Please contact the administrator.", 0
+    
+    elif not (TABLE_MIN==0 and TABLE_MAX==0):
+        qtypeLst.append("table")
+    elif not (SQUARE_MIN==0 and SQUARE_MAX==0):
+        qtypeLst.append("square")
+    elif not (CUBE_MIN==0 and CUBE_MAX==0):
+        qtypeLst.append("cube")
+
+    qtype = random.choice(qtypeLst)
 
     if qtype == "square":
-        num = random.randint(11, 50)
+        num = random.randint(SQUARE_MIN, SQUARE_MAX)
         question = f"{num}² = ?"
         answer = num * num
 
     elif qtype == "cube":
-        num = random.randint(2, 30)
+        num = random.randint(CUBE_MIN, CUBE_MAX)
         question = f"{num}³ = ?"
         answer = num * num * num
 
-    else:
-        num = random.randint(7, 30)
-        i = random.randint(1, 10)
+    elif qtype == "table":
+        num = random.randint(TABLE_MIN, TABLE_MAX)
+        i = random.randint(2, 10)
         question = f"{num} x {i} = ?"
         answer = num * i
 
