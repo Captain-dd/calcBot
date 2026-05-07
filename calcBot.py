@@ -8,11 +8,29 @@ import logging
 from flask import Flask, request, abort
 from datetime import datetime
 
+import sys
+
+os.environ['PYTHONUNBUFFERED'] = '1'
+
 # ===== Logging Setup =====
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.DEBUG)
+handler.setFormatter(logging.Formatter(
+    "%(asctime)s | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+))
+
+# Force immediate flush
+class FlushHandler(logging.StreamHandler):
+    def emit(self, record):
+        super().emit(record)
+        self.flush()
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[FlushHandler(sys.stdout)]
 )
 log = logging.getLogger(__name__)
 
