@@ -4,8 +4,9 @@ import os
 from flask import Flask, request
 
 TOKEN = os.getenv("BOT_TOKEN")
+print("TOKEN LOADED:", TOKEN is not None)
 
-bot = telebot.TeleBot(TOKEN)
+bot = telebot.TeleBot(TOKEN, threaded=False)
 
 # ===== User State =====
 user_state = {}
@@ -91,7 +92,6 @@ def handle(message):
     }
 
     bot.send_message(chat_id, f"Next:\n{question}")
-
 
 app = Flask(__name__)
 
