@@ -32,7 +32,7 @@ def build_type_keyboard(enabled):
         THREE_DIGIT_SUBTRACTION: "Three-Digit Subtraction",
         ADDITION_SUBTRACTION_MIX: "Addition/Subtraction Mix"
     }
-    
+
     keyboard = telebot.types.InlineKeyboardMarkup()
     for key, label in labels.items():
         check = "✅" if key in enabled else "☐"
@@ -133,6 +133,7 @@ def generate_question(enabled):
 
     log.debug(f"Generated question → type={qtype} question='{question}' answer={answer}")
     return question, answer
+
 def send_message(chat_id, text):
     try:
         bot.send_message(chat_id, text)
@@ -190,6 +191,7 @@ def handle_callback(call):
 
     # user clicked confirm after selecting types
     elif call.data == "confirm_types":
+        log.info(f"Confirm button clicked by → chat_id={chat_id}")
         enabled = user_state[chat_id].get("enabled", [])
 
         # if user clicks confirm without selecting any type, show a toast message and do nothing
@@ -197,11 +199,18 @@ def handle_callback(call):
             # Toast — no new message, just a popup
             bot.answer_callback_query(call.id, "⚠️ Select at least one type!", show_alert=False)
             return
+        
+        log.info(f"Types confirmed → chat_id={chat_id} enabled={enabled}")
 
         bot.answer_callback_query(call.id)
         
         # Update the keyboard message to show summary
-        selected_labels = {"table": "Tables", "square": "Squares", "cube": "Cubes"}
+        selected_labels = {TABLE: "Tables", SQUARE: "Squares", CUBE: "Cubes", 
+                           SINGLE_DIGIT_ADDITION: "Single-Digit Addition", SINGLE_DIGIT_SUBTRACTION: "Single-Digit Subtraction", 
+                           TWO_DIGIT_ADDITION: "Two-Digit Addition", TWO_DIGIT_SUBTRACTION: "Two-Digit Subtraction", 
+                           THREE_DIGIT_ADDITION: "Three-Digit Addition", THREE_DIGIT_SUBTRACTION: "Three-Digit Subtraction", 
+                           ADDITION_SUBTRACTION_MIX: "Addition/Subtraction Mix"
+        }
         summary = ", ".join(selected_labels[t] for t in enabled)
         bot.edit_message_text(
             f"Practicing: {summary} ✅",
