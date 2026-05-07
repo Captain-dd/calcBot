@@ -97,15 +97,18 @@ app = Flask(__name__)
 
 @app.route("/webhookCalcBot", methods=["POST"])
 def webhook():
+    print("🔥 WEBHOOK HIT")  # MUST appear
     try:
-        data = request.stream.read().decode("utf-8")
-        print("Received data:", data)
+        data = request.get_data(as_text=True)
+        print("RAW DATA:", data)
+
         update = telebot.types.Update.de_json(data)
         bot.process_new_updates([update])
-    except Exception as e:
-        print("ERROR:", e)
 
-    return "ok", 200
+    except Exception as e:
+        print("❌ ERROR:", str(e))
+
+    return "OK", 200
 
 
 # =========================
