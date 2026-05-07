@@ -95,7 +95,7 @@ def handle(message):
 
 app = Flask(__name__)
 
-@app.route("/begin", methods=["GET"])
+@app.route("/begin")
 def webhook():
     try:
         print("Running...")
