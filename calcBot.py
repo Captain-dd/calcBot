@@ -32,18 +32,17 @@ def build_type_keyboard(enabled):
         THREE_DIGIT_SUBTRACTION: "Three-Digit Subtraction",
         ADDITION_SUBTRACTION_MIX: "Addition/Subtraction Mix"
     }
-    buttons = []
+    
+    keyboard = telebot.types.InlineKeyboardMarkup()
     for key, label in labels.items():
         check = "✅" if key in enabled else "☐"
-        buttons.append(
-            telebot.types.InlineKeyboardButton(
-                f"{check} {label}",
-                callback_data=f"toggle_{key}"
-            )
+        btn = telebot.types.InlineKeyboardButton(
+            f"{check} {label}",
+            callback_data=f"toggle_{key}"
         )
+        keyboard.row(btn)  # ← one per row, no buttons list needed
+
     confirm = telebot.types.InlineKeyboardButton("Confirm ✅", callback_data="confirm_types")
-    keyboard = telebot.types.InlineKeyboardMarkup()
-    keyboard.row(*buttons)
     keyboard.row(confirm)
     return keyboard
 
