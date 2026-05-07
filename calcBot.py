@@ -41,7 +41,7 @@ log.info("User state initialized (in-memory)")
 def keep_alive():
     log.info("Keep-alive thread running")
     while True:
-        time.sleep(10 * 60)
+        time.sleep(60)
         try:
             res = requests.get(f"{WEBHOOK_URL}/", timeout=10)
             log.info(f"Keep-alive ping → HTTP {res.status_code}")
@@ -76,6 +76,13 @@ def generate_question():
     log.debug(f"Generated question → type={qtype} question='{question}' answer={answer}")
     return question, answer
 
+def send_message(chat_id, text):
+    try:
+        bot.send_message(chat_id, text)
+        log.info(f"Message sent → chat_id={chat_id} text='{text}'")
+    except Exception as e:
+        log.error(f"Failed to send message → chat_id={chat_id} error={e}", exc_info=True)
+
 
 # ===== /start =====
 @bot.message_handler(commands=['start'])
@@ -87,7 +94,7 @@ def start(message):
     question, answer = generate_question()
     user_state[chat_id] = {"answer": answer}
 
-    bot.send_message(chat_id, f"Welcome! Solve:\n\n{question}")
+    send_message(chat_id, f"Welcome! Solve:\n\n{question}")
     log.info(f"Question sent → chat_id={chat_id} question='{question}'")
 
 
@@ -104,7 +111,7 @@ def stop(message):
     else:
         log.info(f"No active session to clear → chat_id={chat_id}")
 
-    bot.send_message(chat_id, "Stopped ✅ Type /start to play again.")
+    send_message(chat_id, "Stopped ✅ Type /start to play again.")
 
 
 # ===== Handle Answer =====
@@ -118,12 +125,12 @@ def handle(message):
 
     if chat_id not in user_state:
         log.warning(f"No active session → chat_id={chat_id} sent '{text}' without /start")
-        bot.send_message(chat_id, "Type /start first.")
+        send_message(chat_id, "Type /start first.")
         return
 
     if not text.lstrip('-').isdigit():
         log.warning(f"Invalid input → chat_id={chat_id} sent non-numeric: '{text}'")
-        bot.send_message(chat_id, "Please send a valid number.")
+        send_message(chat_id, "Please send a valid number.")
         return
 
     user_answer = int(text)
@@ -131,14 +138,14 @@ def handle(message):
 
     if user_answer == correct_answer:
         log.info(f"Correct answer → chat_id={chat_id} answered {user_answer} ✅")
-        bot.send_message(chat_id, "Correct ✅")
+        send_message(chat_id, "Correct ✅")
     else:
         log.info(f"Wrong answer → chat_id={chat_id} answered {user_answer}, correct={correct_answer} ❌")
-        bot.send_message(chat_id, f"Wrong ❌  Correct answer = {correct_answer}")
+        send_message(chat_id, f"Wrong ❌  Correct answer = {correct_answer}")
 
     question, answer = generate_question()
     user_state[chat_id] = {"answer": answer}
-    bot.send_message(chat_id, f"Next:\n\n{question}")
+    send_message(chat_id, f"Next:\n\n{question}")
     log.info(f"Next question sent → chat_id={chat_id} question='{question}'")
 
 
