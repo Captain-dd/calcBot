@@ -95,33 +95,16 @@ def handle(message):
 
 app = Flask(__name__)
 
-@app.route("/webhookCalcBot", methods=["POST"])
+@app.route("/begin", methods=["POST"])
 def webhook():
-    print("🔥 WEBHOOK HIT")  # MUST appear
     try:
-        data = request.get_data(as_text=True)
-        print("RAW DATA:", data)
-
-        update = telebot.types.Update.de_json(data)
-        bot.process_new_updates([update])
-
+        print("Running...")
+        bot.infinity_polling()
     except Exception as e:
-        print("❌ ERROR:", str(e))
+        print("ERROR:", e)
 
-    return "OK", 200
+    return "ok", 200
 
-
-# =========================
-# HEALTH CHECK
-# =========================
-@app.route("/")
-def home():
-    return "Bot is running"
-
-
-# =========================
-# RUN SERVER
-# =========================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5007))
     app.run(host="0.0.0.0", port=port)
