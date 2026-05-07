@@ -105,9 +105,9 @@ def webhook():
 
     return "ok", 200
 
-@app.route("/", methods=["GET"])
-def webhook():
-    return "bot is running", 200
+@app.route("/")
+def home():
+    return "Bot is running"
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5007))
