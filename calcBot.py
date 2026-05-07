@@ -44,11 +44,11 @@ def generate_question():
         log.critical("All question ranges are set to 0. Please configure the ranges.")
         return "No questions available. Please contact the administrator.", 0
     
-    elif not (TABLE_MIN==0 and TABLE_MAX==0):
+    if not (TABLE_MIN==0 and TABLE_MAX==0):
         qtypeLst.append("table")
-    elif not (SQUARE_MIN==0 and SQUARE_MAX==0):
+    if not (SQUARE_MIN==0 and SQUARE_MAX==0):
         qtypeLst.append("square")
-    elif not (CUBE_MIN==0 and CUBE_MAX==0):
+    if not (CUBE_MIN==0 and CUBE_MAX==0):
         qtypeLst.append("cube")
 
     qtype = random.choice(qtypeLst)
