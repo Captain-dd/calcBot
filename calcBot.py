@@ -6,7 +6,7 @@ from flask import Flask, request
 TOKEN = os.getenv("BOT_TOKEN")
 print("TOKEN LOADED:", TOKEN is not None)
 
-bot = telebot.TeleBot(TOKEN)
+bot = telebot.TeleBot(TOKEN, threaded=False)
 
 # ===== User State =====
 user_state = {}
