@@ -19,6 +19,26 @@ app = Flask(__name__)
 user_state = {}
 log.info("User state initialized (in-memory)")
 
+def build_type_keyboard(enabled):
+    labels = {
+        "table":  "Tables",
+        "square": "Squares",
+        "cube":   "Cubes"
+    }
+    buttons = []
+    for key, label in labels.items():
+        check = "✅" if key in enabled else "☐"
+        buttons.append(
+            telebot.types.InlineKeyboardButton(
+                f"{check} {label}",
+                callback_data=f"toggle_{key}"
+            )
+        )
+    confirm = telebot.types.InlineKeyboardButton("Confirm ✅", callback_data="confirm_types")
+    keyboard = telebot.types.InlineKeyboardMarkup()
+    keyboard.row(*buttons)
+    keyboard.row(confirm)
+    return keyboard
 
 # ===== Keep Alive =====
 def keep_alive():
@@ -37,21 +57,8 @@ def keep_alive():
 
 
 # ===== Generate Question =====
-def generate_question():
-    qtypeLst = []
-
-    if TABLE_MIN==0 and TABLE_MAX==0 and SQUARE_MIN==0 and SQUARE_MAX==0 and CUBE_MIN==0 and CUBE_MAX==0:
-        log.critical("All question ranges are set to 0. Please configure the ranges.")
-        return "No questions available. Please contact the administrator.", 0
-    
-    if not (TABLE_MIN==0 and TABLE_MAX==0):
-        qtypeLst.append("table")
-    if not (SQUARE_MIN==0 and SQUARE_MAX==0):
-        qtypeLst.append("square")
-    if not (CUBE_MIN==0 and CUBE_MAX==0):
-        qtypeLst.append("cube")
-
-    qtype = random.choice(qtypeLst)
+def generate_question(enabled):
+    qtype = random.choice(enabled)
 
     if qtype == "square":
         num = random.randint(SQUARE_MIN, SQUARE_MAX)
@@ -71,7 +78,6 @@ def generate_question():
 
     log.debug(f"Generated question → type={qtype} question='{question}' answer={answer}")
     return question, answer
-
 def send_message(chat_id, text):
     try:
         bot.send_message(chat_id, text)
@@ -87,11 +93,70 @@ def start(message):
     username = message.from_user.username or "unknown"
     log.info(f"/start → chat_id={chat_id} username=@{username}")
 
-    question, answer = generate_question()
-    user_state[chat_id] = {"answer": answer}
+    user_state[chat_id] = {
+        "mode": "setup",
+        "enabled": [],        # nothing selected yet
+        "answer": None
+    }
 
-    send_message(chat_id, f"Welcome! Solve:\n\n{question}")
-    log.info(f"Question sent → chat_id={chat_id} question='{question}'")
+    keyboard = build_type_keyboard(enabled=[])
+    bot.send_message(chat_id, "What do you want to practice?", reply_markup=keyboard)
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callback(call):
+    chat_id = call.message.chat.id
+
+    # Safety: if state missing, ask to /start again
+    if chat_id not in user_state:
+        bot.answer_callback_query(call.id, "Please type /start first.")
+        return
+
+    if call.data.startswith("toggle_"):
+        qtype = call.data.replace("toggle_", "")           # "table" / "square" / "cube"
+        enabled = user_state[chat_id].get("enabled", [])
+
+        if qtype in enabled:
+            enabled.remove(qtype)
+        else:
+            enabled.append(qtype)
+
+        user_state[chat_id]["enabled"] = enabled
+
+        # Edit the same message with updated checkmarks
+        keyboard = build_type_keyboard(enabled)
+        bot.edit_message_reply_markup(
+            chat_id=chat_id,
+            message_id=call.message.id,
+            reply_markup=keyboard
+        )
+        bot.answer_callback_query(call.id)   # clears the loading spinner
+        log.info(f"Toggle → chat_id={chat_id} type={qtype} enabled={enabled}")
+
+    elif call.data == "confirm_types":
+        enabled = user_state[chat_id].get("enabled", [])
+
+        if not enabled:
+            # Toast — no new message, just a popup
+            bot.answer_callback_query(call.id, "⚠️ Select at least one type!", show_alert=False)
+            return
+
+        bot.answer_callback_query(call.id)
+
+        # Update the keyboard message to show summary
+        selected_labels = {"table": "Tables", "square": "Squares", "cube": "Cubes"}
+        summary = ", ".join(selected_labels[t] for t in enabled)
+        bot.edit_message_text(
+            f"Practicing: {summary} ✅",
+            chat_id=chat_id,
+            message_id=call.message.id
+        )
+
+        # Switch to playing mode and send first question
+        user_state[chat_id]["mode"] = "playing"
+        question, answer = generate_question(enabled)
+        user_state[chat_id]["answer"] = answer
+        send_message(chat_id, f"Let's go! Solve:\n\n{question}")
+        log.info(f"Setup done → chat_id={chat_id} enabled={enabled}")
 
 
 # ===== /stop =====
@@ -120,12 +185,15 @@ def handle(message):
     log.info(f"Message received → chat_id={chat_id} username=@{username} text='{text}'")
 
     if chat_id not in user_state:
-        log.warning(f"No active session → chat_id={chat_id} sent '{text}' without /start")
         send_message(chat_id, "Type /start first.")
         return
 
+    # Block text input during setup — user should use buttons
+    if user_state[chat_id].get("mode") == "setup":
+        send_message(chat_id, "Please select your practice types using the buttons above.")
+        return
+
     if not text.lstrip('-').isdigit():
-        log.warning(f"Invalid input → chat_id={chat_id} sent non-numeric: '{text}'")
         send_message(chat_id, "Please send a valid number.")
         return
 
@@ -133,17 +201,16 @@ def handle(message):
     correct_answer = user_state[chat_id]["answer"]
 
     if user_answer == correct_answer:
-        log.info(f"Correct answer → chat_id={chat_id} answered {user_answer} ✅")
+        log.info(f"Correct → chat_id={chat_id} ✅")
         send_message(chat_id, "Correct ✅")
     else:
-        log.info(f"Wrong answer → chat_id={chat_id} answered {user_answer}, correct={correct_answer} ❌")
+        log.info(f"Wrong → chat_id={chat_id} answered {user_answer}, correct={correct_answer} ❌")
         send_message(chat_id, f"Wrong ❌  Correct answer = {correct_answer}")
 
-    question, answer = generate_question()
-    user_state[chat_id] = {"answer": answer}
+    enabled = user_state[chat_id]["enabled"]
+    question, answer = generate_question(enabled)
+    user_state[chat_id]["answer"] = answer
     send_message(chat_id, f"Next:\n\n{question}")
-    log.info(f"Next question sent → chat_id={chat_id} question='{question}'")
-
 
 # ===== Webhook Route =====
 @app.route("/webhook", methods=["POST"])
