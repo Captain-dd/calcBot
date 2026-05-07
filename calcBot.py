@@ -1,6 +1,7 @@
 import telebot
 import random
 import os
+from flask import Flask, request
 
 TOKEN = os.getenv("BOT_TOKEN")
 
@@ -91,7 +92,26 @@ def handle(message):
 
     bot.send_message(chat_id, f"Next:\n{question}")
 
+app = Flask(__name__)
 
-# ===== Run =====
-print("Running...")
-bot.infinity_polling()
+@app.route(f"/webhookCalcBot", methods=["POST"])
+def webhook():
+    update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
+    bot.process_new_updates([update])
+    return "ok", 200
+
+
+# =========================
+# HEALTH CHECK
+# =========================
+@app.route("/")
+def home():
+    return "Bot is running"
+
+
+# =========================
+# RUN SERVER
+# =========================
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5007))
+    app.run(host="0.0.0.0", port=port)
