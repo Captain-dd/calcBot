@@ -94,10 +94,15 @@ def handle(message):
 
 app = Flask(__name__)
 
-@app.route(f"/webhookCalcBot", methods=["POST"])
+@app.route("/webhookCalcBot", methods=["POST"])
 def webhook():
-    update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
-    bot.process_new_updates([update])
+    try:
+        data = request.stream.read().decode("utf-8")
+        update = telebot.types.Update.de_json(data)
+        bot.process_new_updates([update])
+    except Exception as e:
+        print("ERROR:", e)
+
     return "ok", 200
 
 
