@@ -5,10 +5,10 @@ import threading
 import time
 import requests
 from flask import Flask, request, abort
+from fpdf import FPDF
 from datetime import datetime
-from config import TOKEN, WEBHOOK_URL, WEBHOOK_SECRET, TABLE_MIN, TABLE_MAX, SQUARE_MIN, SQUARE_MAX, CUBE_MIN, CUBE_MAX, TABLE, SQUARE, CUBE, SINGLE_DIGIT_ADDITION, SINGLE_DIGIT_SUBTRACTION, TWO_DIGIT_ADDITION, TWO_DIGIT_SUBTRACTION, THREE_DIGIT_ADDITION, THREE_DIGIT_SUBTRACTION, ADDITION_SUBTRACTION_MIX
+from config import *
 from logger import setup_logging, get_logger
-
 setup_logging()          # ← call ONCE at entry point
 log = get_logger(__name__)
 
@@ -19,22 +19,32 @@ app = Flask(__name__)
 user_state = {}
 log.info("User state initialized (in-memory)")
 
-def build_type_keyboard(enabled):
-    labels = {
-        TABLE:  "Tables",
-        SQUARE: "Squares",
-        CUBE:   "Cubes",
-        SINGLE_DIGIT_ADDITION: "Single-Digit Addition",
-        SINGLE_DIGIT_SUBTRACTION: "Single-Digit Subtraction",
-        TWO_DIGIT_ADDITION: "Two-Digit Addition",
-        TWO_DIGIT_SUBTRACTION: "Two-Digit Subtraction",
-        THREE_DIGIT_ADDITION: "Three-Digit Addition",
-        THREE_DIGIT_SUBTRACTION: "Three-Digit Subtraction",
-        ADDITION_SUBTRACTION_MIX: "Addition/Subtraction Mix"
-    }
+LABELS = {
+    TABLE:  "Tables",
+    SQUARE: "Squares",
+    CUBE:   "Cubes",
+    SINGLE_DIGIT_ADDITION: "Single-Digit Addition",
+    SINGLE_DIGIT_SUBTRACTION: "Single-Digit Subtraction",
+    TWO_DIGIT_ADDITION: "Two-Digit Addition",
+    TWO_DIGIT_SUBTRACTION: "Two-Digit Subtraction",
+    THREE_DIGIT_ADDITION: "Three-Digit Addition",
+    THREE_DIGIT_SUBTRACTION: "Three-Digit Subtraction",
+    ADDITION_SUBTRACTION_MIX: "Addition/Subtraction Mix",
+    # MULTIPLICATION_WITH_TWO_HALF_ONE_HALF_AND_EIGHT: "Multiplication with 2, 0.5, 1.5, & 8",
+    # MULTIPLICATION_WITH_TWO_DIGIT_INTO_ONE_DIGIT: "Multiplication with two digit into one digit",
+    # MULTIPLICATION_WITH_TWO_DIGIT_INTO_TWO_DIGIT: "Multiplication with two digit into two digit",
+    # MULTIPLICATION_WITH_FIVE_TWENTY_FIVE_AND_ONE_TWENTY_FIVE: "Multiplication with 5, 25, & 125",
+    # MULTIPLICATION_OF_TWO_DIGIT_NUMBERS_WITH_DIFFERENCE_TWO: "Multiplication of two digit numbers with difference 2",
+    # MULTIPLICATION_OF_TWO_DIGIT_NUMBERS_WITH_EVEN_DIFFERENCE: "Multiplication of two digit numbers with even difference",
+    # MULTIPLICATION_OF_CONSECUTIVE_NUMBERS: "Multiplication of consecutive numbers",
+    # MULTIPLICATION_WITH_11: "Multiplication with 11",
+    WANT_PDF: "Practice Question in pdf"
+}
 
+def build_type_keyboard(enabled):
+    
     keyboard = telebot.types.InlineKeyboardMarkup()
-    for key, label in labels.items():
+    for key, label in LABELS.items():
         check = "✅" if key in enabled else "☐"
         btn = telebot.types.InlineKeyboardButton(
             f"{check} {label}",
@@ -45,6 +55,8 @@ def build_type_keyboard(enabled):
     confirm = telebot.types.InlineKeyboardButton("Confirm ✅", callback_data="confirm_types")
     keyboard.row(confirm)
     return keyboard
+
+
 
 # ===== Keep Alive =====
 def keep_alive():
@@ -134,6 +146,45 @@ def generate_question(enabled):
     log.debug(f"Generated question → type={qtype} question='{question}' answer={answer}")
     return question, answer
 
+def create_pdf(chat_id, types):
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, "Practice Questions", new_x="LMARGIN", new_y="NEXT")
+
+    all_answers = []   # saved for the answer key
+
+    for qtype in types:
+        pdf.ln(4)
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 8, LABELS[qtype], new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 12)
+
+        answers = []
+        for i in range(1, 11):                      # 10 questions per type
+            question, answer = generate_question([qtype])
+            pdf.cell(0, 7, f"{i}.  {question}", new_x="LMARGIN", new_y="NEXT")
+            answers.append(answer)
+        all_answers.append((LABELS[qtype], answers))
+
+    # Answer key on a new page
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, "Answer Key", new_x="LMARGIN", new_y="NEXT")
+    for label, answers in all_answers:
+        pdf.ln(4)
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 8, label, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 12)
+        for i, ans in enumerate(answers, start=1):
+            pdf.cell(0, 7, f"{i}.  {ans}", new_x="LMARGIN", new_y="NEXT")
+
+    filename = f"practice_{chat_id}.pdf"
+    pdf.output(filename)
+    return filename
+
 def send_message(chat_id, text):
     try:
         bot.send_message(chat_id, text)
@@ -194,36 +245,44 @@ def handle_callback(call):
         log.info(f"Confirm button clicked by → chat_id={chat_id}")
         enabled = user_state[chat_id].get("enabled", [])
 
-        # if user clicks confirm without selecting any type, show a toast message and do nothing
-        if not enabled:
-            # Toast — no new message, just a popup
-            bot.answer_callback_query(call.id, "⚠️ Select at least one type!", show_alert=False)
+        # Separate the PDF option from the real question types
+        want_pdf = WANT_PDF in enabled
+        practice_types = [t for t in enabled if t != WANT_PDF]
+
+        # Nothing real selected → toast and stop
+        if not practice_types:
+            bot.answer_callback_query(call.id, "⚠️ Select at least one question type!", show_alert=False)
             return
-        
-        log.info(f"Types confirmed → chat_id={chat_id} enabled={enabled}")
 
         bot.answer_callback_query(call.id)
-        
-        # Update the keyboard message to show summary
-        selected_labels = {TABLE: "Tables", SQUARE: "Squares", CUBE: "Cubes", 
-                           SINGLE_DIGIT_ADDITION: "Single-Digit Addition", SINGLE_DIGIT_SUBTRACTION: "Single-Digit Subtraction", 
-                           TWO_DIGIT_ADDITION: "Two-Digit Addition", TWO_DIGIT_SUBTRACTION: "Two-Digit Subtraction", 
-                           THREE_DIGIT_ADDITION: "Three-Digit Addition", THREE_DIGIT_SUBTRACTION: "Three-Digit Subtraction", 
-                           ADDITION_SUBTRACTION_MIX: "Addition/Subtraction Mix"
-        }
-        summary = ", ".join(selected_labels[t] for t in enabled)
+
+        summary = ", ".join(LABELS[t] for t in enabled)
         bot.edit_message_text(
-            f"Practicing: {summary} ✅",
+            f"Selected: {summary} ✅",
             chat_id=chat_id,
             message_id=call.message.id
         )
 
-        # Switch to playing mode and send first question
+        # ---- PDF part ----
+        if want_pdf:
+            try:
+                send_message(chat_id, "Creating your PDF, please wait... ⏳")
+                filename = create_pdf(chat_id, practice_types)
+                with open(filename, "rb") as f:
+                    bot.send_document(chat_id, f, caption="Here are your practice questions 📄")
+                os.remove(filename)
+                log.info(f"PDF sent → chat_id={chat_id} types={practice_types}")
+            except Exception as e:
+                log.error(f"PDF failed → chat_id={chat_id} error={e}", exc_info=True)
+                send_message(chat_id, "Sorry, could not create the PDF ❌")
+
+        # ---- Normal practice: only the real types, never WANT_PDF ----
+        user_state[chat_id]["enabled"] = practice_types
         user_state[chat_id]["mode"] = "playing"
-        question, answer = generate_question(enabled)
+        question, answer = generate_question(practice_types)
         user_state[chat_id]["answer"] = answer
         send_message(chat_id, f"Let's go! Solve:\n\n{question}")
-        log.info(f"Setup done → chat_id={chat_id} enabled={enabled}")
+        log.info(f"Setup done → chat_id={chat_id} enabled={practice_types}")
 
 
 # ===== /stop =====
