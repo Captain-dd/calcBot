@@ -255,7 +255,7 @@ def create_pdf(chat_id, types):
         for i, ans in enumerate(answers, start=1):
             pdf.cell(0, 7, f"{i}.  {ans}", new_x="LMARGIN", new_y="NEXT")
 
-    filename = f"practice_{chat_id}.pdf"
+    filename = f"practice_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{chat_id}.pdf"
     pdf.output(filename)
     return filename
 
