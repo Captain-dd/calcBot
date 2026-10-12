@@ -30,14 +30,14 @@ LABELS = {
     THREE_DIGIT_ADDITION: "Three-Digit Addition",
     THREE_DIGIT_SUBTRACTION: "Three-Digit Subtraction",
     ADDITION_SUBTRACTION_MIX: "Addition/Subtraction Mix",
-    # MULTIPLICATION_WITH_TWO_HALF_ONE_HALF_AND_EIGHT: "Multiplication with 2, 0.5, 1.5, & 8",
-    # MULTIPLICATION_WITH_TWO_DIGIT_INTO_ONE_DIGIT: "Multiplication with two digit into one digit",
-    # MULTIPLICATION_WITH_TWO_DIGIT_INTO_TWO_DIGIT: "Multiplication with two digit into two digit",
-    # MULTIPLICATION_WITH_FIVE_TWENTY_FIVE_AND_ONE_TWENTY_FIVE: "Multiplication with 5, 25, & 125",
-    # MULTIPLICATION_OF_TWO_DIGIT_NUMBERS_WITH_DIFFERENCE_TWO: "Multiplication of two digit numbers with difference 2",
-    # MULTIPLICATION_OF_TWO_DIGIT_NUMBERS_WITH_EVEN_DIFFERENCE: "Multiplication of two digit numbers with even difference",
-    # MULTIPLICATION_OF_CONSECUTIVE_NUMBERS: "Multiplication of consecutive numbers",
-    # MULTIPLICATION_WITH_11: "Multiplication with 11",
+    MULTIPLICATION_WITH_TWO_HALF_ONE_HALF_AND_EIGHT: "Multiplication with 2, 0.5, 1.5, & 8",
+    MULTIPLICATION_WITH_TWO_DIGIT_INTO_ONE_DIGIT: "Multiplication with two digit into one digit",
+    MULTIPLICATION_WITH_TWO_DIGIT_INTO_TWO_DIGIT: "Multiplication with two digit into two digit",
+    MULTIPLICATION_WITH_FIVE_TWENTY_FIVE_AND_ONE_TWENTY_FIVE: "Multiplication with 5, 25, & 125",
+    MULTIPLICATION_OF_TWO_DIGIT_NUMBERS_WITH_DIFFERENCE_TWO: "Multiplication of two digit numbers with difference 2",
+    MULTIPLICATION_OF_TWO_DIGIT_NUMBERS_WITH_EVEN_DIFFERENCE: "Multiplication of two digit numbers with even difference",
+    MULTIPLICATION_OF_CONSECUTIVE_NUMBERS: "Multiplication of consecutive numbers",
+    MULTIPLICATION_WITH_11: "Multiplication with 11",
     WANT_PDF: "Practice Question in pdf"
 }
 
@@ -75,7 +75,7 @@ def keep_alive():
 
 
 # ===== Generate Question =====
-def generate_question(enabled):
+def generate_question(enabled, kind=None):
     qtype = random.choice(enabled)
 
     if qtype == SQUARE:
@@ -143,6 +143,75 @@ def generate_question(enabled):
             question = f"{a} - {b} = ?"
             answer = a - b
 
+    elif qtype == MULTIPLICATION_WITH_TWO_HALF_ONE_HALF_AND_EIGHT:
+        num = random.randint(10, 999)
+        multiplier = random.choice([2, 0.5, 1.5, 8])
+        question = f"{num} x {multiplier} = ?"
+        answer = num * multiplier
+        if answer == int(answer):      # show 16 instead of 16.0
+            answer = int(answer)
+
+    elif qtype == MULTIPLICATION_WITH_TWO_DIGIT_INTO_ONE_DIGIT:
+        a = random.randint(10, 99)
+        b = random.randint(2, 9)
+        question = f"{a} x {b} = ?"
+        answer = a * b
+
+    elif qtype == MULTIPLICATION_WITH_TWO_DIGIT_INTO_TWO_DIGIT:
+        if kind is None:
+            kind = random.choice(["A", "B", "C"])
+
+        if kind == "A":
+            a = random.randint(10, 19)
+            b = random.randint(20, 39)
+        elif kind == "B":
+            a = random.randint(20, 39)
+            b = random.randint(20, 39)
+        else:
+            a = random.randint(10, 39)
+            b = random.randint(41, 99)
+
+        if random.choice([True, False]):   # sometimes swap the order
+            a, b = b, a
+        question = f"{a} x {b} = ?"
+        answer = a * b
+
+    elif qtype == MULTIPLICATION_WITH_FIVE_TWENTY_FIVE_AND_ONE_TWENTY_FIVE:
+        num = random.randint(10, 999)
+        multiplier = random.choice([5, 25, 125])
+        question = f"{num} x {multiplier} = ?"
+        answer = num * multiplier
+
+    elif qtype == MULTIPLICATION_OF_TWO_DIGIT_NUMBERS_WITH_DIFFERENCE_TWO:
+        a = random.randint(10, 97)
+        b = a + 2
+        if random.choice([True, False]):
+            a, b = b, a
+        question = f"{a} x {b} = ?"
+        answer = a * b
+
+    elif qtype == MULTIPLICATION_OF_TWO_DIGIT_NUMBERS_WITH_EVEN_DIFFERENCE:
+        a = random.randint(10, 89)
+        b = a + random.choice([2, 4, 6, 8, 10])
+        if random.choice([True, False]):
+            a, b = b, a
+        question = f"{a} x {b} = ?"
+        answer = a * b
+
+    elif qtype == MULTIPLICATION_OF_CONSECUTIVE_NUMBERS:
+        a = random.randint(10, 98)
+        b = a + 1
+        question = f"{a} x {b} = ?"
+        answer = a * b
+
+    elif qtype == MULTIPLICATION_WITH_11:
+        num = random.randint(12, 999)
+        question = f"{num} x 11 = ?"
+        answer = num * 11
+
+    else:
+        raise ValueError(f"Unknown question type: {qtype}")
+
     log.debug(f"Generated question → type={qtype} question='{question}' answer={answer}")
     return question, answer
 
@@ -164,7 +233,12 @@ def create_pdf(chat_id, types):
 
         answers = []
         for i in range(1, 11):                      # 10 questions per type
-            question, answer = generate_question([qtype])
+            kind = None
+            kinds = ["A", "B", "C"]
+            if qtype == MULTIPLICATION_WITH_TWO_DIGIT_INTO_TWO_DIGIT and i <= len(kinds):
+                kind = kinds[i - 1]                 # questions 1, 2, 3 are A, B, C
+            question, answer = generate_question([qtype], kind)
+
             pdf.cell(0, 7, f"{i}.  {question}", new_x="LMARGIN", new_y="NEXT")
             answers.append(answer)
         all_answers.append((LABELS[qtype], answers))
@@ -319,11 +393,12 @@ def handle(message):
         send_message(chat_id, "Please select your practice types using the buttons above.")
         return
 
-    if not text.lstrip('-').isdigit():
+    try:
+        user_answer = float(text)
+    except ValueError:
         send_message(chat_id, "Please send a valid number.")
         return
-
-    user_answer = int(text)
+    
     correct_answer = user_state[chat_id]["answer"]
 
     if user_answer == correct_answer:
