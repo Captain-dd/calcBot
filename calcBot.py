@@ -19,6 +19,9 @@ app = Flask(__name__)
 user_state = {}
 log.info("User state initialized (in-memory)")
 
+COUNT_OPTIONS = [10, 20, 30, 50]
+DEFAULT_COUNT = 10
+
 LABELS = {
     TABLE:  "Tables",
     SQUARE: "Squares",
@@ -215,7 +218,8 @@ def generate_question(enabled, kind=None):
     log.debug(f"Generated question → type={qtype} question='{question}' answer={answer}")
     return question, answer
 
-def create_pdf(chat_id, types):
+def create_pdf(chat_id, types, counts):
+    
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
@@ -231,8 +235,9 @@ def create_pdf(chat_id, types):
         pdf.cell(0, 8, LABELS[qtype], new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 12)
 
+        count = counts.get(qtype, DEFAULT_COUNT)
         answers = []
-        for i in range(1, 11):                      # 10 questions per type
+        for i in range(1, count+1):
             kind = None
             kinds = ["A", "B", "C"]
             if qtype == MULTIPLICATION_WITH_TWO_DIGIT_INTO_TWO_DIGIT and i <= len(kinds):
@@ -266,6 +271,36 @@ def send_message(chat_id, text):
     except Exception as e:
         log.error(f"Failed to send message → chat_id={chat_id} error={e}", exc_info=True)
 
+def build_count_keyboard(types, counts):
+    keyboard = telebot.types.InlineKeyboardMarkup()
+    for qtype in types:
+        chosen = counts.get(qtype, DEFAULT_COUNT)
+
+        # Row 1: the type name (does nothing when tapped)
+        keyboard.row(telebot.types.InlineKeyboardButton(LABELS[qtype], callback_data="noop"))
+
+        # Row 2: the 4 count buttons, the chosen one gets a tick
+        buttons = []
+        for n in COUNT_OPTIONS:
+            check = " ✅" if n == chosen else ""
+            buttons.append(telebot.types.InlineKeyboardButton(
+                f"{n}{check}",
+                callback_data=f"count_{qtype}_{n}"
+            ))
+        keyboard.row(*buttons)
+
+    keyboard.row(telebot.types.InlineKeyboardButton("Generate PDF ✅", callback_data="generate_pdf"))
+    return keyboard
+
+
+def start_practice(chat_id, practice_types):
+    user_state[chat_id]["enabled"] = practice_types
+    user_state[chat_id]["mode"] = "playing"
+    question, answer = generate_question(practice_types)
+    user_state[chat_id]["answer"] = answer
+    send_message(chat_id, f"Let's go! Solve:\n\n{question}")
+    log.info(f"Setup done → chat_id={chat_id} enabled={practice_types}")
+
 
 # ===== /start =====
 @bot.message_handler(commands=['start'])
@@ -277,6 +312,7 @@ def start(message):
     user_state[chat_id] = {
         "mode": "setup",
         "enabled": [],        # nothing selected yet
+        "counts": {},         # questions per type for the PDF, e.g. {"square": 20}
         "answer": None
     }
 
@@ -329,35 +365,87 @@ def handle_callback(call):
             return
 
         bot.answer_callback_query(call.id)
+        user_state[chat_id]["enabled"] = practice_types    # never contains WANT_PDF
 
-        summary = ", ".join(LABELS[t] for t in enabled)
+        if want_pdf:
+            # Show the count screen, practice starts after the PDF is sent
+            user_state[chat_id]["mode"] = "counts"
+            user_state[chat_id]["counts"] = {}
+            bot.edit_message_text(
+                "How many questions for each type?",
+                chat_id=chat_id,
+                message_id=call.message.id,
+                reply_markup=build_count_keyboard(practice_types, {})
+            )
+        else:
+            summary = ", ".join(LABELS[t] for t in practice_types)
+            bot.edit_message_text(
+                f"Practicing: {summary} ✅",
+                chat_id=chat_id,
+                message_id=call.message.id
+            )
+            start_practice(chat_id, practice_types)
+
+    # tapped a type name on the count screen: do nothing
+    elif call.data == "noop":
+        bot.answer_callback_query(call.id)
+
+    # tapped a count button, e.g. "count_square_20"
+    elif call.data.startswith("count_"):
+        bot.answer_callback_query(call.id)
+
+        if user_state[chat_id].get("mode") != "counts":
+            return                                  # old button from an earlier session
+
+        rest = call.data.replace("count_", "", 1)   # "square_20"
+        qtype, number = rest.rsplit("_", 1)         # split from the RIGHT
+        number = int(number)
+
+        counts = user_state[chat_id]["counts"]
+        if counts.get(qtype, DEFAULT_COUNT) == number:
+            return                                  # same button tapped again, no change
+
+        counts[qtype] = number
+        keyboard = build_count_keyboard(user_state[chat_id]["enabled"], counts)
+        bot.edit_message_reply_markup(
+            chat_id=chat_id,
+            message_id=call.message.id,
+            reply_markup=keyboard
+        )
+        log.info(f"Count → chat_id={chat_id} type={qtype} count={number}")
+
+    # tapped Generate PDF on the count screen
+    elif call.data == "generate_pdf":
+        bot.answer_callback_query(call.id)
+
+        if user_state[chat_id].get("mode") != "counts":
+            return
+
+        user_state[chat_id]["mode"] = "generating"  # blocks double taps
+        practice_types = user_state[chat_id]["enabled"]
+        counts = user_state[chat_id]["counts"]
+
+        summary = ", ".join(
+            f"{LABELS[t]} ({counts.get(t, DEFAULT_COUNT)})" for t in practice_types
+        )
         bot.edit_message_text(
-            f"Selected: {summary} ✅",
+            f"PDF: {summary} ✅",
             chat_id=chat_id,
             message_id=call.message.id
         )
 
-        # ---- PDF part ----
-        if want_pdf:
-            try:
-                send_message(chat_id, "Creating your PDF, please wait... ⏳")
-                filename = create_pdf(chat_id, practice_types)
-                with open(filename, "rb") as f:
-                    bot.send_document(chat_id, f, caption="Here are your practice questions 📄")
-                os.remove(filename)
-                log.info(f"PDF sent → chat_id={chat_id} types={practice_types}")
-            except Exception as e:
-                log.error(f"PDF failed → chat_id={chat_id} error={e}", exc_info=True)
-                send_message(chat_id, "Sorry, could not create the PDF ❌")
+        try:
+            send_message(chat_id, "Creating your PDF, please wait... ⏳")
+            filename = create_pdf(chat_id, practice_types, counts)
+            with open(filename, "rb") as f:
+                bot.send_document(chat_id, f, caption="Here are your practice questions 📄")
+            os.remove(filename)
+            log.info(f"PDF sent → chat_id={chat_id} counts={counts}")
+        except Exception as e:
+            log.error(f"PDF failed → chat_id={chat_id} error={e}", exc_info=True)
+            send_message(chat_id, "Sorry, could not create the PDF ❌")
 
-        # ---- Normal practice: only the real types, never WANT_PDF ----
-        user_state[chat_id]["enabled"] = practice_types
-        user_state[chat_id]["mode"] = "playing"
-        question, answer = generate_question(practice_types)
-        user_state[chat_id]["answer"] = answer
-        send_message(chat_id, f"Let's go! Solve:\n\n{question}")
-        log.info(f"Setup done → chat_id={chat_id} enabled={practice_types}")
-
+        start_practice(chat_id, practice_types)
 
 # ===== /stop =====
 @bot.message_handler(commands=['stop'])
@@ -380,6 +468,10 @@ def stop(message):
 def handle(message):
     chat_id = message.chat.id
     username = message.from_user.username or "unknown"
+    
+    if not message.text:
+        send_message(chat_id, "Please send your answer as a number.")
+        return
     text = message.text.strip()
 
     log.info(f"Message received → chat_id={chat_id} username=@{username} text='{text}'")
@@ -389,8 +481,8 @@ def handle(message):
         return
 
     # Block text input during setup — user should use buttons
-    if user_state[chat_id].get("mode") == "setup":
-        send_message(chat_id, "Please select your practice types using the buttons above.")
+    if user_state[chat_id].get("mode") != "playing":
+        send_message(chat_id, "Please use the buttons above first.")
         return
 
     try:
