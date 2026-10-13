@@ -83,54 +83,54 @@ def generate_question(enabled, kind=None):
 
     if qtype == SQUARE:
         num = random.randint(SQUARE_MIN, SQUARE_MAX)
-        question = f"{num}² = ?"
+        question = f"{num}² = ____________"
         answer = num * num
 
     elif qtype == CUBE:
         num = random.randint(CUBE_MIN, CUBE_MAX)
-        question = f"{num}³ = ?"
+        question = f"{num}³ = ____________"
         answer = num * num * num
 
     elif qtype == TABLE:
         num = random.randint(TABLE_MIN, TABLE_MAX)
         i = random.randint(2, 10)
-        question = f"{num} x {i} = ?"
+        question = f"{num} x {i} = ____________"
         answer = num * i
     
     elif qtype == SINGLE_DIGIT_ADDITION:
         a = random.randint(0, 9)
         b = random.randint(0, 9)
-        question = f"{a} + {b} = ?"
+        question = f"{a} + {b} = ____________"
         answer = a + b
 
     elif qtype == SINGLE_DIGIT_SUBTRACTION:
         a = random.randint(0, 9)
         b = random.randint(0, a)  # ensure non-negative result
-        question = f"{a} - {b} = ?"
+        question = f"{a} - {b} = ____________"
         answer = a - b
 
     elif qtype == TWO_DIGIT_ADDITION:
         a = random.randint(10, 99)
         b = random.randint(10, 99)
-        question = f"{a} + {b} = ?"
+        question = f"{a} + {b} = ____________"
         answer = a + b
 
     elif qtype == TWO_DIGIT_SUBTRACTION:
         a = random.randint(10, 99)
         b = random.randint(10, a)  # ensure non-negative result
-        question = f"{a} - {b} = ?"
+        question = f"{a} - {b} = ____________"
         answer = a - b
 
     elif qtype == THREE_DIGIT_ADDITION:
         a = random.randint(100, 999)
         b = random.randint(100, 999)
-        question = f"{a} + {b} = ?"
+        question = f"{a} + {b} = ____________"
         answer = a + b
     
     elif qtype == THREE_DIGIT_SUBTRACTION:
         a = random.randint(100, 999)
         b = random.randint(100, a)  # ensure non-negative result
-        question = f"{a} - {b} = ?"
+        question = f"{a} - {b} = ____________"
         answer = a - b
 
     elif qtype == ADDITION_SUBTRACTION_MIX:
@@ -138,18 +138,18 @@ def generate_question(enabled, kind=None):
         b = random.randint(0, 999)
         op = random.choice(["+", "-"])
         if op == "+":
-            question = f"{a} + {b} = ?"
+            question = f"{a} + {b} = ____________"
             answer = a + b
         else:
             # ensure non-negative result for subtraction
             a, b = max(a, b), min(a, b)
-            question = f"{a} - {b} = ?"
+            question = f"{a} - {b} = ____________"
             answer = a - b
 
     elif qtype == MULTIPLICATION_WITH_TWO_HALF_ONE_HALF_AND_EIGHT:
         num = random.randint(10, 999)
         multiplier = random.choice([2, 0.5, 1.5, 8])
-        question = f"{num} x {multiplier} = ?"
+        question = f"{num} x {multiplier} = ____________"
         answer = num * multiplier
         if answer == int(answer):      # show 16 instead of 16.0
             answer = int(answer)
@@ -157,7 +157,7 @@ def generate_question(enabled, kind=None):
     elif qtype == MULTIPLICATION_WITH_TWO_DIGIT_INTO_ONE_DIGIT:
         a = random.randint(10, 99)
         b = random.randint(2, 9)
-        question = f"{a} x {b} = ?"
+        question = f"{a} x {b} = ____________"
         answer = a * b
 
     elif qtype == MULTIPLICATION_WITH_TWO_DIGIT_INTO_TWO_DIGIT:
@@ -176,13 +176,13 @@ def generate_question(enabled, kind=None):
 
         if random.choice([True, False]):   # sometimes swap the order
             a, b = b, a
-        question = f"{a} x {b} = ?"
+        question = f"{a} x {b} = ____________"
         answer = a * b
 
     elif qtype == MULTIPLICATION_WITH_FIVE_TWENTY_FIVE_AND_ONE_TWENTY_FIVE:
         num = random.randint(10, 999)
         multiplier = random.choice([5, 25, 125])
-        question = f"{num} x {multiplier} = ?"
+        question = f"{num} x {multiplier} = ____________"
         answer = num * multiplier
 
     elif qtype == MULTIPLICATION_OF_TWO_DIGIT_NUMBERS_WITH_DIFFERENCE_TWO:
@@ -190,7 +190,7 @@ def generate_question(enabled, kind=None):
         b = a + 2
         if random.choice([True, False]):
             a, b = b, a
-        question = f"{a} x {b} = ?"
+        question = f"{a} x {b} = ____________"
         answer = a * b
 
     elif qtype == MULTIPLICATION_OF_TWO_DIGIT_NUMBERS_WITH_EVEN_DIFFERENCE:
@@ -198,18 +198,18 @@ def generate_question(enabled, kind=None):
         b = a + random.choice([2, 4, 6, 8, 10])
         if random.choice([True, False]):
             a, b = b, a
-        question = f"{a} x {b} = ?"
+        question = f"{a} x {b} = ____________"
         answer = a * b
 
     elif qtype == MULTIPLICATION_OF_CONSECUTIVE_NUMBERS:
         a = random.randint(10, 98)
         b = a + 1
-        question = f"{a} x {b} = ?"
+        question = f"{a} x {b} = ____________"
         answer = a * b
 
     elif qtype == MULTIPLICATION_WITH_11:
         num = random.randint(12, 999)
-        question = f"{num} x 11 = ?"
+        question = f"{num} x 11 = ____________"
         answer = num * 11
 
     else:
